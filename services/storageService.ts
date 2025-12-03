@@ -115,3 +115,158 @@ export const saveWallpaper = (url: string): void => {
     console.error('Failed to save wallpaper:', error);
   }
 };
+
+// Validate imported data structure
+export const validateImportedData = (data: any): AppData => {
+  // Check if data has the expected structure
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid data format: data must be an object');
+  }
+
+  // Handle both direct AppData format and wrapped format (with version/exportDate)
+  let appData: AppData;
+  if (data.data && Array.isArray(data.data.devices) && Array.isArray(data.data.history)) {
+    // Wrapped format: { version, exportDate, data: { devices, history } }
+    appData = data.data;
+  } else if (Array.isArray(data.devices) && Array.isArray(data.history)) {
+    // Direct format: { devices, history }
+    appData = data;
+  } else {
+    throw new Error('Invalid data format: missing devices or history arrays');
+  }
+
+  // Validate devices array
+  if (!Array.isArray(appData.devices)) {
+    throw new Error('Invalid data format: devices must be an array');
+  }
+
+  // Validate history array
+  if (!Array.isArray(appData.history)) {
+    throw new Error('Invalid data format: history must be an array');
+  }
+
+  // Validate each device
+  appData.devices.forEach((device: any, index: number) => {
+    if (!device.id || typeof device.id !== 'string') {
+      throw new Error(`Invalid device at index ${index}: missing or invalid id`);
+    }
+    if (!device.name || typeof device.name !== 'string') {
+      throw new Error(`Invalid device at index ${index}: missing or invalid name`);
+    }
+    if (!device.type || typeof device.type !== 'string') {
+      throw new Error(`Invalid device at index ${index}: missing or invalid type`);
+    }
+    if (device.status !== 'available' && device.status !== 'borrowed') {
+      throw new Error(`Invalid device at index ${index}: status must be 'available' or 'borrowed'`);
+    }
+    if (typeof device.lastUpdated !== 'number') {
+      throw new Error(`Invalid device at index ${index}: lastUpdated must be a number`);
+    }
+  });
+
+  // Validate each history record
+  appData.history.forEach((record: any, index: number) => {
+    if (!record.id || typeof record.id !== 'string') {
+      throw new Error(`Invalid history record at index ${index}: missing or invalid id`);
+    }
+    if (!record.deviceId || typeof record.deviceId !== 'string') {
+      throw new Error(`Invalid history record at index ${index}: missing or invalid deviceId`);
+    }
+    if (!record.deviceName || typeof record.deviceName !== 'string') {
+      throw new Error(`Invalid history record at index ${index}: missing or invalid deviceName`);
+    }
+    if (!['add', 'borrow', 'return', 'delete'].includes(record.action)) {
+      throw new Error(`Invalid history record at index ${index}: action must be one of: add, borrow, return, delete`);
+    }
+    if (typeof record.timestamp !== 'number') {
+      throw new Error(`Invalid history record at index ${index}: timestamp must be a number`);
+    }
+  });
+
+  return appData;
+};
+
+// Import data from file
+export const importData = (file: File): Promise<AppData> => {
+  return new Promise((resolve, reject) => {
+    // Validate file type
+    if (!file.name.endsWith('.json')) {
+      reject(new Error('Invalid file type. Please select a JSON file.'));
+      return;
+    }
+
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        if (!content) {
+          reject(new Error('File is empty'));
+          return;
+        }
+
+        const imported = JSON.parse(content);
+        const validatedData = validateImportedData(imported);
+        
+        // Save the validated data
+        saveData(validatedData);
+        
+        resolve(validatedData);
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          reject(new Error('Invalid JSON format. Please ensure the file is a valid JSON file.'));
+        } else if (error instanceof Error) {
+          reject(error);
+        } else {
+          reject(new Error('Failed to import data: ' + String(error)));
+        }
+      }
+    };
+
+    reader.onerror = () => {
+      reject(new Error('Failed to read file. Please try again.'));
+    };
+
+    reader.readAsText(file);
+  });
+};
+
+// Export data to JSON file
+export const exportData = (): void => {
+  try {
+    const data = loadData();
+    
+    // Create export object with metadata
+    const exportData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      data: data
+    };
+
+    // Convert to JSON string with formatting
+    const json = JSON.stringify(exportData, null, 2);
+    
+    // Create Blob
+    const blob = new Blob([json], { type: 'application/json' });
+    
+    // Create download link
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    a.download = `equiptrack-backup-${timestamp}.json`;
+    
+    // Trigger download
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    // Clean up
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Failed to export data:', error);
+    throw new Error('Failed to export data. Please try again.');
+  }
+};

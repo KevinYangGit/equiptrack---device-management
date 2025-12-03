@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Plus, Package2, Upload, AlertTriangle, Trash2, X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, Package2, Upload, AlertTriangle, Trash2, X, CheckCircle2, AlertCircle, Download, FileUp, Settings } from 'lucide-react';
 import { AppData, Device, HistoryRecord } from './types';
-import { loadData, saveData, generateId, loadWallpaper, isWallpaperFetchedToday, saveWallpaper } from './services/storageService';
+import { loadData, saveData, generateId, loadWallpaper, isWallpaperFetchedToday, saveWallpaper, exportData, importData } from './services/storageService';
 import { DeviceList } from './components/DeviceList';
 import { HistoryLog } from './components/HistoryLog';
 import { Button } from './components/Button';
@@ -22,6 +22,19 @@ const App = () => {
   
   // Error state for storage issues
   const [storageError, setStorageError] = useState<string | null>(null);
+  
+  // Success message state
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  
+  // Import state
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<{ deviceCount: number; historyCount: number; exportDate?: string } | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const importFileRef = useRef<File | null>(null);
+  
+  // Settings menu state
+  const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+  const [isExportConfirmOpen, setIsExportConfirmOpen] = useState(false);
   
   // Form Inputs
   const [newDeviceName, setNewDeviceName] = useState('');
@@ -136,7 +149,135 @@ const App = () => {
     return { total, available, borrowed };
   }, [data.devices]);
 
+  // Auto-hide success message after 3 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+
+  // Close settings menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.settings-menu-container')) {
+        setIsSettingsMenuOpen(false);
+      }
+    };
+    
+    if (isSettingsMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isSettingsMenuOpen]);
+
   // Handlers
+  const handleExportClick = () => {
+    setIsSettingsMenuOpen(false);
+    setIsExportConfirmOpen(true);
+  };
+
+  const handleExport = () => {
+    setIsExportConfirmOpen(false);
+    try {
+      exportData();
+      setSuccessMessage('数据已成功导出！');
+      setStorageError(null);
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : '导出数据失败，请重试');
+      setSuccessMessage(null);
+    }
+  };
+
+  const handleImportClickFromMenu = () => {
+    setIsSettingsMenuOpen(false);
+    handleImportClick();
+  };
+
+  const handleImportClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        setIsImporting(true);
+        setStorageError(null);
+        
+        // Store file reference
+        importFileRef.current = file;
+        
+        // Read and preview the file
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const content = event.target?.result as string;
+            const imported = JSON.parse(content);
+            
+            // Extract data (handle both wrapped and direct format)
+            let data: AppData;
+            if (imported.data && Array.isArray(imported.data.devices)) {
+              data = imported.data;
+            } else if (Array.isArray(imported.devices)) {
+              data = imported;
+            } else {
+              throw new Error('Invalid file format');
+            }
+
+            // Show preview
+            setImportPreview({
+              deviceCount: data.devices.length,
+              historyCount: data.history.length,
+              exportDate: imported.exportDate
+            });
+            setIsImportModalOpen(true);
+            setIsImporting(false);
+          } catch (error) {
+            setIsImporting(false);
+            setStorageError(error instanceof Error ? error.message : '无法读取文件，请确保是有效的JSON文件');
+          }
+        };
+        reader.onerror = () => {
+          setIsImporting(false);
+          setStorageError('读取文件失败，请重试');
+        };
+        reader.readAsText(file);
+      } catch (error) {
+        setIsImporting(false);
+        setStorageError(error instanceof Error ? error.message : '导入失败，请重试');
+      }
+    };
+    input.click();
+  };
+
+  const handleImportConfirm = async () => {
+    if (!importFileRef.current) {
+      setStorageError('未选择文件');
+      return;
+    }
+
+    try {
+      setIsImporting(true);
+      setStorageError(null);
+      
+      const importedData = await importData(importFileRef.current);
+      setData(importedData);
+      setSuccessMessage('数据已成功导入！');
+      setIsImportModalOpen(false);
+      setImportPreview(null);
+      importFileRef.current = null;
+      setIsImporting(false);
+    } catch (error) {
+      setIsImporting(false);
+      setStorageError(error instanceof Error ? error.message : '导入数据失败，请重试');
+    }
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -360,7 +501,7 @@ const App = () => {
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 animate-fade-in-up">
             <AlertTriangle className="text-red-600 shrink-0 mt-0.5" size={20} />
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-red-900 mb-1">Storage Error</h3>
+              <h3 className="font-semibold text-red-900 mb-1">错误</h3>
               <p className="text-sm text-red-700">{storageError}</p>
             </div>
             <button
@@ -372,8 +513,25 @@ const App = () => {
           </div>
         )}
 
+        {/* Success Message Alert */}
+        {successMessage && (
+          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3 animate-fade-in-up">
+            <CheckCircle2 className="text-green-600 shrink-0 mt-0.5" size={20} />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-green-900 mb-1">成功</h3>
+              <p className="text-sm text-green-700">{successMessage}</p>
+            </div>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              className="text-green-400 hover:text-green-600 transition-colors shrink-0"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        )}
+
         {/* Header */}
-        <header className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4 animate-fade-in-up">
+        <header className="relative flex flex-col sm:flex-row justify-between items-center mb-8 gap-4 animate-fade-in-up z-20">
           <div className="flex items-center gap-3">
             <div className="bg-brand-600 p-2.5 rounded-xl shadow-lg shadow-brand-500/20 text-white">
               <Package2 size={28} />
@@ -383,10 +541,45 @@ const App = () => {
               <p className="text-sm text-gray-600 font-medium">Device Management System</p>
             </div>
           </div>
-          <Button onClick={() => setIsAddModalOpen(true)} className="w-full sm:w-auto shadow-lg shadow-brand-500/20">
-            <Plus size={18} className="mr-2" />
-            Add New Device
-          </Button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Settings Button with Dropdown Menu */}
+            <div className="relative settings-menu-container">
+              <Button 
+                onClick={() => setIsSettingsMenuOpen(!isSettingsMenuOpen)} 
+                variant="secondary" 
+                className="shadow-sm hover:shadow-md transition-all p-2"
+                title="设置"
+              >
+                <Settings size={18} />
+              </Button>
+
+              {/* Settings Dropdown Menu */}
+              {isSettingsMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-[100] animate-in fade-in zoom-in-95 duration-100">
+                  <button
+                    onClick={handleExportClick}
+                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors"
+                  >
+                    <Download size={16} />
+                    <span>导出数据</span>
+                  </button>
+                  <button
+                    onClick={handleImportClickFromMenu}
+                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isImporting}
+                  >
+                    <FileUp size={16} />
+                    <span>导入数据</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <Button onClick={() => setIsAddModalOpen(true)} className="shadow-lg shadow-brand-500/20">
+              <Plus size={18} className="mr-2" />
+              Add New Device
+            </Button>
+          </div>
         </header>
 
         {/* Device Statistics */}
@@ -587,6 +780,105 @@ const App = () => {
           <div className="pt-2 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)}>Cancel</Button>
             <Button variant="danger" onClick={handleDelete}>Delete Device</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Import Confirm Modal */}
+      <Modal
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportPreview(null);
+          importFileRef.current = null;
+        }}
+        title="确认导入数据"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg text-amber-800 text-sm">
+            <AlertTriangle className="shrink-0" size={20} />
+            <p>导入数据将覆盖当前所有设备数据。此操作无法撤销，请确认是否继续。</p>
+          </div>
+          
+          {importPreview && (
+            <div className="space-y-2">
+              <p className="text-sm text-gray-600">
+                导入数据预览：
+              </p>
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                <p className="text-sm text-gray-700">
+                  <span className="font-semibold">设备数量：</span>
+                  {importPreview.deviceCount}
+                </p>
+                <p className="text-sm text-gray-700">
+                  <span className="font-semibold">历史记录数量：</span>
+                  {importPreview.historyCount}
+                </p>
+                {importPreview.exportDate && (
+                  <p className="text-sm text-gray-700">
+                    <span className="font-semibold">导出日期：</span>
+                    {new Date(importPreview.exportDate).toLocaleString('zh-CN')}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="pt-2 flex justify-end gap-2">
+            <Button 
+              variant="secondary" 
+              onClick={() => {
+                setIsImportModalOpen(false);
+                setImportPreview(null);
+                importFileRef.current = null;
+              }}
+              disabled={isImporting}
+            >
+              取消
+            </Button>
+            <Button 
+              onClick={handleImportConfirm} 
+              disabled={isImporting}
+            >
+              {isImporting ? '导入中...' : '确认导入'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Export Confirm Modal */}
+      <Modal
+        isOpen={isExportConfirmOpen}
+        onClose={() => setIsExportConfirmOpen(false)}
+        title="确认导出数据"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg text-blue-800 text-sm">
+            <AlertTriangle className="shrink-0" size={20} />
+            <p>即将导出所有设备数据。导出文件将包含所有设备和历史记录。</p>
+          </div>
+          
+          <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+            <p className="text-sm text-gray-700">
+              <span className="font-semibold">当前设备数量：</span>
+              {deviceStats.total}
+            </p>
+            <p className="text-sm text-gray-700">
+              <span className="font-semibold">历史记录数量：</span>
+              {data.history.length}
+            </p>
+          </div>
+
+          <div className="pt-2 flex justify-end gap-2">
+            <Button 
+              variant="secondary" 
+              onClick={() => setIsExportConfirmOpen(false)}
+            >
+              取消
+            </Button>
+            <Button onClick={handleExport}>
+              确认导出
+            </Button>
           </div>
         </div>
       </Modal>

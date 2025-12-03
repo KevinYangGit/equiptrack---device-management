@@ -67,3 +67,56 @@ View your app in AI Studio: https://ai.studio/apps/drive/102yVwjh16u42mXnBXSIxap
 - The repository name in `homepage` and `base` must match exactly
 - Deployment may take a few minutes to become available
 - All data is stored locally in the browser using localStorage
+
+## Data Backup and Restore
+
+### Export Data (Backup)
+
+To backup your device data:
+
+1. Click the **"导出"** (Export) button in the header
+2. A JSON file will be downloaded automatically
+3. The file name includes a timestamp: `equiptrack-backup-YYYY-MM-DD-HHmmss.json`
+4. Save this file in a safe location
+
+**Export file format:**
+- Contains all devices and history records
+- Includes metadata (version, export date)
+- JSON format for easy reading and editing
+
+### Import Data (Restore)
+
+To restore data from a backup:
+
+1. Click the **"导入"** (Import) button in the header
+2. Select a previously exported JSON file
+3. Review the import preview (device count, history count, export date)
+4. Confirm the import (this will replace all current data)
+5. Data will be restored and the page will refresh
+
+**Important Notes:**
+- ⚠️ **Importing will replace all current data** - make sure to export your current data first if needed
+- Only valid JSON files exported from this app can be imported
+- The import process validates data format before applying
+- If validation fails, you'll see a detailed error message
+
+### Best Practices
+
+1. **Regular Backups**: Export your data regularly to prevent data loss
+2. **Safe Storage**: Keep backup files in multiple locations (cloud storage, external drive)
+3. **Before Major Changes**: Always export before making significant changes
+4. **File Naming**: Keep the original timestamp in the filename to track backup dates
+
+### Data Format
+
+The exported JSON file structure:
+```json
+{
+  "version": "1.0",
+  "exportDate": "2024-12-03T12:00:00.000Z",
+  "data": {
+    "devices": [...],
+    "history": [...]
+  }
+}
+```
