@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Plus, Package2, Upload, AlertTriangle, Trash2, X, CheckCircle2, AlertCircle, Download, FileUp, Settings } from 'lucide-react';
-import { AppData, Device, HistoryRecord } from './types';
-import { loadData, saveData, generateId, loadWallpaper, isWallpaperFetchedToday, saveWallpaper, exportData, importData } from './services/storageService';
+import { Plus, Package2, Upload, AlertTriangle, Trash2, X, CheckCircle2, AlertCircle, Download, FileUp, Settings, Laptop, Smartphone, Camera, Headphones, Keyboard, Box, Tablet, Monitor, Printer, Server, HardDrive, Mouse, Speaker, Gamepad2, Watch, Tv, Radio, Package } from 'lucide-react';
+import { AppData, Device, HistoryRecord, DeviceType } from './types';
+import { loadData, saveData, generateId, loadWallpaper, isWallpaperFetchedToday, saveWallpaper, exportData, importData, loadDeviceNames, saveDeviceName, deleteDeviceName, getDeviceNamesSorted, loadDeviceTypes, addDeviceType, deleteDeviceType, saveDeviceTypes, updateDeviceTypeIcon } from './services/storageService';
+import { IconSelector } from './components/IconSelector';
 import { DeviceList } from './components/DeviceList';
 import { HistoryLog } from './components/HistoryLog';
 import { Button } from './components/Button';
@@ -35,6 +36,18 @@ const App = () => {
   // Settings menu state
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
   const [isExportConfirmOpen, setIsExportConfirmOpen] = useState(false);
+  
+  // Device name history state
+  const [deviceNameHistory, setDeviceNameHistory] = useState<string[]>([]);
+  const [isDeviceNameDropdownOpen, setIsDeviceNameDropdownOpen] = useState(false);
+  
+  // Device types state
+  const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
+  const [isDeviceTypeModalOpen, setIsDeviceTypeModalOpen] = useState(false);
+  const [newDeviceTypeInput, setNewDeviceTypeInput] = useState('');
+  const [newDeviceTypeIcon, setNewDeviceTypeIcon] = useState('Box');
+  const [newDeviceTypeColor, setNewDeviceTypeColor] = useState('text-gray-600');
+  const [editingType, setEditingType] = useState<DeviceType | null>(null);
   
   // Form Inputs
   const [newDeviceName, setNewDeviceName] = useState('');
@@ -149,6 +162,28 @@ const App = () => {
     return { total, available, borrowed };
   }, [data.devices]);
 
+  // Create device type map for DeviceList
+  const deviceTypeMap = useMemo(() => {
+    const map: Record<string, { icon: string; color: string }> = {};
+    deviceTypes.forEach(type => {
+      map[type.name] = {
+        icon: type.icon,
+        color: type.color || 'text-gray-600'
+      };
+    });
+    return map;
+  }, [deviceTypes]);
+
+  // Load device name history and device types on mount
+  useEffect(() => {
+    setDeviceNameHistory(getDeviceNamesSorted());
+    const types = loadDeviceTypes();
+    setDeviceTypes(types);
+    if (types.length > 0) {
+      setNewDeviceType(types[0].name);
+    }
+  }, []);
+
   // Auto-hide success message after 3 seconds
   useEffect(() => {
     if (successMessage) {
@@ -166,13 +201,16 @@ const App = () => {
       if (!target.closest('.settings-menu-container')) {
         setIsSettingsMenuOpen(false);
       }
+      if (!target.closest('.device-name-dropdown-container')) {
+        setIsDeviceNameDropdownOpen(false);
+      }
     };
     
-    if (isSettingsMenuOpen) {
+    if (isSettingsMenuOpen || isDeviceNameDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [isSettingsMenuOpen]);
+  }, [isSettingsMenuOpen, isDeviceNameDropdownOpen]);
 
   // Handlers
   const handleExportClick = () => {
@@ -312,6 +350,10 @@ const App = () => {
   const handleAddDevice = () => {
     if (!newDeviceName) return;
 
+    // Save device name to history
+    saveDeviceName(newDeviceName);
+    setDeviceNameHistory(getDeviceNamesSorted());
+
     const newDevice: Device = {
       id: generateId(),
       name: newDeviceName,
@@ -346,8 +388,72 @@ const App = () => {
     
     // Reset form
     setNewDeviceName('');
-    setNewDeviceType('Laptop');
+    const types = loadDeviceTypes();
+    if (types.length > 0) {
+      setNewDeviceType(types[0].name);
+    }
     setNewDeviceImage('');
+  };
+
+  const handleDeleteDeviceName = (name: string) => {
+    deleteDeviceName(name);
+    setDeviceNameHistory(getDeviceNamesSorted());
+  };
+
+  const handleAddDeviceType = () => {
+    if (!newDeviceTypeInput.trim()) {
+      setStorageError('设备类型不能为空');
+      return;
+    }
+
+    try {
+      addDeviceType(newDeviceTypeInput.trim(), newDeviceTypeIcon, newDeviceTypeColor);
+      const updatedTypes = loadDeviceTypes();
+      setDeviceTypes(updatedTypes);
+      setNewDeviceTypeInput('');
+      setNewDeviceTypeIcon('Box');
+      setNewDeviceTypeColor('text-gray-600');
+      setSuccessMessage('设备类型已添加');
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : '添加设备类型失败');
+    }
+  };
+
+  const handleDeleteDeviceType = (typeName: string) => {
+    try {
+      deleteDeviceType(typeName, data.devices);
+      const updatedTypes = loadDeviceTypes();
+      setDeviceTypes(updatedTypes);
+      
+      // If deleted type was selected, switch to first available type
+      if (newDeviceType === typeName && updatedTypes.length > 0) {
+        setNewDeviceType(updatedTypes[0].name);
+      }
+      
+      setSuccessMessage('设备类型已删除');
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : '删除设备类型失败');
+    }
+  };
+
+  const handleEditTypeIcon = (type: DeviceType) => {
+    setEditingType(type);
+    setNewDeviceTypeIcon(type.icon);
+    setNewDeviceTypeColor(type.color || 'text-gray-600');
+  };
+
+  const handleSaveTypeIcon = () => {
+    if (!editingType) return;
+    
+    try {
+      updateDeviceTypeIcon(editingType.name, newDeviceTypeIcon, newDeviceTypeColor);
+      const updatedTypes = loadDeviceTypes();
+      setDeviceTypes(updatedTypes);
+      setEditingType(null);
+      setSuccessMessage('图标已更新');
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : '更新图标失败');
+    }
   };
 
   const openBorrowModal = (deviceId: string) => {
@@ -630,6 +736,7 @@ const App = () => {
               onBorrow={openBorrowModal}
               onReturn={openReturnModal}
               onDelete={openDeleteModal}
+              deviceTypeMap={deviceTypeMap}
             />
           </div>
 
@@ -645,7 +752,10 @@ const App = () => {
       {/* Add Device Modal */}
       <Modal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setIsDeviceNameDropdownOpen(false);
+        }}
         title="Add New Device"
       >
         <div className="space-y-4">
@@ -666,36 +776,91 @@ const App = () => {
             </div>
           </div>
           
-          <div>
+          <div className="relative device-name-dropdown-container">
             <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
-            <input
-              type="text"
-              value={newDeviceName}
-              onChange={(e) => setNewDeviceName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
-              placeholder="e.g. MacBook Pro 14"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={newDeviceName}
+                onChange={(e) => {
+                  setNewDeviceName(e.target.value);
+                  setIsDeviceNameDropdownOpen(true);
+                }}
+                onFocus={() => setIsDeviceNameDropdownOpen(true)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                placeholder="e.g. MacBook Pro 14"
+              />
+              
+              {/* Device Name History Dropdown */}
+              {isDeviceNameDropdownOpen && deviceNameHistory.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto py-1">
+                  {deviceNameHistory
+                    .filter(name => 
+                      !newDeviceName || name.toLowerCase().includes(newDeviceName.toLowerCase())
+                    )
+                    .map((name) => (
+                      <div
+                        key={name}
+                        className="px-3 py-2 text-sm text-gray-700 hover:bg-brand-50 hover:text-brand-700 cursor-pointer flex justify-between items-center group"
+                      >
+                        <span
+                          onClick={() => {
+                            setNewDeviceName(name);
+                            setIsDeviceNameDropdownOpen(false);
+                          }}
+                          className="flex-1"
+                        >
+                          {name}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteDeviceName(name);
+                            if (newDeviceName === name) {
+                              setNewDeviceName('');
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 transition-opacity"
+                          title="删除"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">Type</label>
+              <button
+                type="button"
+                onClick={() => setIsDeviceTypeModalOpen(true)}
+                className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+              >
+                管理类型
+              </button>
+            </div>
             <select
               value={newDeviceType}
               onChange={(e) => setNewDeviceType(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none bg-white"
             >
-              <option value="Laptop">Laptop</option>
-              <option value="Mobile">Mobile</option>
-              <option value="Tablet">Tablet</option>
-              <option value="Camera">Camera</option>
-              <option value="Audio">Audio</option>
-              <option value="Accessory">Accessory</option>
-              <option value="Other">Other</option>
+              {deviceTypes.map((type) => (
+                <option key={type.name} value={type.name}>
+                  {type.name}
+                </option>
+              ))}
             </select>
           </div>
 
           <div className="pt-2 flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => {
+              setIsAddModalOpen(false);
+              setIsDeviceNameDropdownOpen(false);
+            }}>Cancel</Button>
             <Button onClick={handleAddDevice} disabled={!newDeviceName}>Add Device</Button>
           </div>
         </div>
@@ -878,6 +1043,166 @@ const App = () => {
             </Button>
             <Button onClick={handleExport}>
               确认导出
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Device Type Management Modal */}
+      <Modal
+        isOpen={isDeviceTypeModalOpen}
+        onClose={() => {
+          setIsDeviceTypeModalOpen(false);
+          setNewDeviceTypeInput('');
+          setNewDeviceTypeIcon('Box');
+          setNewDeviceTypeColor('text-gray-600');
+          setEditingType(null);
+          setStorageError(null);
+        }}
+        title="管理设备类型"
+      >
+        <div className="space-y-4">
+          {/* Add New Type Section */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">添加新类型</label>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={newDeviceTypeInput}
+                onChange={(e) => setNewDeviceTypeInput(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handleAddDeviceType();
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                placeholder="输入新设备类型"
+              />
+              
+              {/* Icon Selector */}
+              <IconSelector
+                selectedIcon={newDeviceTypeIcon}
+                selectedColor={newDeviceTypeColor}
+                onIconChange={(icon, color) => {
+                  setNewDeviceTypeIcon(icon);
+                  setNewDeviceTypeColor(color);
+                }}
+              />
+              
+              <Button onClick={handleAddDeviceType} disabled={!newDeviceTypeInput.trim()}>
+                添加
+              </Button>
+            </div>
+          </div>
+
+          {/* Device Types List */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">现有类型</label>
+            <div className="border border-gray-200 rounded-lg divide-y divide-gray-200 max-h-60 overflow-auto">
+              {deviceTypes.map((type) => {
+                const isInUse = data.devices.some(device => device.type === type.name);
+                const isEditing = editingType?.name === type.name;
+                
+                // Get icon component
+                const getIconComponent = (iconName: string) => {
+                  const iconMap: Record<string, React.ComponentType<any>> = {
+                    Laptop, Smartphone, Camera, Headphones, Keyboard, Box,
+                    Tablet, Monitor, Printer, Server, HardDrive, Mouse,
+                    Speaker, Gamepad2, Watch, Tv, Radio, Package,
+                  };
+                  return iconMap[iconName] || Box;
+                };
+                
+                const IconComponent = getIconComponent(type.icon);
+                
+                return (
+                  <div
+                    key={type.name}
+                    className="px-3 py-3 hover:bg-gray-50 group"
+                  >
+                    {isEditing ? (
+                      // 编辑模式
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <IconComponent size={20} className={type.color} />
+                          <span className="text-sm font-medium text-gray-900">{type.name}</span>
+                        </div>
+                        <IconSelector
+                          selectedIcon={newDeviceTypeIcon}
+                          selectedColor={newDeviceTypeColor}
+                          onIconChange={(icon, color) => {
+                            setNewDeviceTypeIcon(icon);
+                            setNewDeviceTypeColor(color);
+                          }}
+                        />
+                        <div className="flex gap-2">
+                          <Button 
+                            onClick={handleSaveTypeIcon}
+                            className="text-sm py-1.5"
+                          >
+                            保存
+                          </Button>
+                          <Button 
+                            variant="secondary" 
+                            onClick={() => {
+                              setEditingType(null);
+                              setNewDeviceTypeIcon('Box');
+                              setNewDeviceTypeColor('text-gray-600');
+                            }}
+                            className="text-sm py-1.5"
+                          >
+                            取消
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      // 显示模式
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1">
+                          <IconComponent size={20} className={type.color || 'text-gray-600'} />
+                          <span className="text-sm text-gray-700">{type.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isInUse && (
+                            <span className="text-xs text-gray-500">使用中</span>
+                          )}
+                          <button
+                            onClick={() => handleEditTypeIcon(type)}
+                            className="opacity-0 group-hover:opacity-100 text-blue-500 hover:text-blue-700 p-1 transition-opacity"
+                            title="编辑图标"
+                          >
+                            <Settings size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDeviceType(type.name)}
+                            disabled={isInUse}
+                            className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={isInUse ? '该类型正在使用中，无法删除' : '删除类型'}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {deviceTypes.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">暂无设备类型</p>
+            )}
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <Button variant="secondary" onClick={() => {
+              setIsDeviceTypeModalOpen(false);
+              setNewDeviceTypeInput('');
+              setNewDeviceTypeIcon('Box');
+              setNewDeviceTypeColor('text-gray-600');
+              setEditingType(null);
+              setStorageError(null);
+            }}>
+              关闭
             </Button>
           </div>
         </div>

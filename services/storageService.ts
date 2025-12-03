@@ -1,4 +1,4 @@
-import { AppData, Device, HistoryRecord } from '../types';
+import { AppData, Device, HistoryRecord, DeviceType } from '../types';
 
 const STORAGE_KEY = 'equiptrack_data_v1';
 
@@ -269,4 +269,156 @@ export const exportData = (): void => {
     console.error('Failed to export data:', error);
     throw new Error('Failed to export data. Please try again.');
   }
+};
+
+// Device name history storage keys
+const DEVICE_NAMES_KEY = 'equiptrack_device_names';
+const DEVICE_TYPES_KEY = 'equiptrack_device_types';
+
+// Device Name History Management
+export interface DeviceNameHistory {
+  [name: string]: number; // name -> usage count
+}
+
+// Load device name history
+export const loadDeviceNames = (): DeviceNameHistory => {
+  try {
+    const serializedData = localStorage.getItem(DEVICE_NAMES_KEY);
+    if (!serializedData) {
+      return {};
+    }
+    return JSON.parse(serializedData);
+  } catch (error) {
+    console.error('Failed to load device names:', error);
+    return {};
+  }
+};
+
+// Save device name (increment usage count)
+export const saveDeviceName = (name: string): void => {
+  try {
+    const history = loadDeviceNames();
+    history[name] = (history[name] || 0) + 1;
+    localStorage.setItem(DEVICE_NAMES_KEY, JSON.stringify(history));
+  } catch (error) {
+    console.error('Failed to save device name:', error);
+  }
+};
+
+// Delete device name from history
+export const deleteDeviceName = (name: string): void => {
+  try {
+    const history = loadDeviceNames();
+    delete history[name];
+    localStorage.setItem(DEVICE_NAMES_KEY, JSON.stringify(history));
+  } catch (error) {
+    console.error('Failed to delete device name:', error);
+  }
+};
+
+// Get device names sorted by frequency (descending)
+export const getDeviceNamesSorted = (): string[] => {
+  const history = loadDeviceNames();
+  return Object.entries(history)
+    .sort(([, countA], [, countB]) => countB - countA)
+    .map(([name]) => name);
+};
+
+// Device Type Management
+const DEFAULT_DEVICE_TYPES: DeviceType[] = [
+  { name: 'Laptop', icon: 'Laptop', color: 'text-blue-600' },
+  { name: 'Mobile', icon: 'Smartphone', color: 'text-purple-600' },
+  { name: 'Tablet', icon: 'Tablet', color: 'text-indigo-600' },
+  { name: 'Camera', icon: 'Camera', color: 'text-rose-600' },
+  { name: 'Audio', icon: 'Headphones', color: 'text-pink-600' },
+  { name: 'Accessory', icon: 'Keyboard', color: 'text-amber-600' },
+  { name: 'Other', icon: 'Box', color: 'text-gray-600' },
+];
+
+// Load device types
+export const loadDeviceTypes = (): DeviceType[] => {
+  try {
+    const serializedData = localStorage.getItem(DEVICE_TYPES_KEY);
+    if (!serializedData) {
+      // Return default types if no saved types
+      return [...DEFAULT_DEVICE_TYPES];
+    }
+    const data = JSON.parse(serializedData);
+    
+    // 向后兼容：如果是字符串数组，转换为对象数组
+    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
+      return data.map((name: string) => {
+        const defaultType = DEFAULT_DEVICE_TYPES.find(dt => dt.name === name);
+        return defaultType || { name, icon: 'Box', color: 'text-gray-600' };
+      });
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Failed to load device types:', error);
+    return [...DEFAULT_DEVICE_TYPES];
+  }
+};
+
+// Save device types
+export const saveDeviceTypes = (types: DeviceType[]): void => {
+  try {
+    localStorage.setItem(DEVICE_TYPES_KEY, JSON.stringify(types));
+  } catch (error) {
+    console.error('Failed to save device types:', error);
+    throw error;
+  }
+};
+
+// Add new device type
+export const addDeviceType = (type: string, icon: string = 'Box', color: string = 'text-gray-600'): void => {
+  if (!type || !type.trim()) {
+    throw new Error('Device type cannot be empty');
+  }
+  
+  const types = loadDeviceTypes();
+  const trimmedType = type.trim();
+  
+  if (types.some(t => t.name === trimmedType)) {
+    throw new Error('Device type already exists');
+  }
+  
+  types.push({ name: trimmedType, icon, color });
+  saveDeviceTypes(types);
+};
+
+// Update device type icon
+export const updateDeviceTypeIcon = (typeName: string, icon: string, color?: string): void => {
+  const types = loadDeviceTypes();
+  const typeIndex = types.findIndex(t => t.name === typeName);
+  
+  if (typeIndex === -1) {
+    throw new Error('Device type not found');
+  }
+  
+  types[typeIndex] = {
+    ...types[typeIndex],
+    icon,
+    color: color || types[typeIndex].color || 'text-gray-600'
+  };
+  
+  saveDeviceTypes(types);
+};
+
+// Delete device type
+export const deleteDeviceType = (type: string, currentDevices: Device[]): void => {
+  // Check if type is being used by any device
+  const isInUse = currentDevices.some(device => device.type === type);
+  if (isInUse) {
+    throw new Error(`Cannot delete device type "${type}" because it is being used by existing devices`);
+  }
+  
+  const types = loadDeviceTypes();
+  const filteredTypes = types.filter(t => t.name !== type);
+  
+  if (filteredTypes.length === 0) {
+    throw new Error('Cannot delete the last device type');
+  }
+  
+  saveDeviceTypes(filteredTypes);
 };

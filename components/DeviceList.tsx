@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Device, DeviceStatus } from '../types';
-import { Laptop, Smartphone, Camera, Box, Clock, CheckCircle2, AlertCircle, Trash2, Headphones, Keyboard } from 'lucide-react';
+import { Laptop, Smartphone, Camera, Box, Clock, CheckCircle2, AlertCircle, Trash2, Headphones, Keyboard, Tablet, Monitor, Printer, Server, HardDrive, Mouse, Speaker, Gamepad2, Watch, Tv, Radio, Package } from 'lucide-react';
 import { Button } from './Button';
 
 interface DeviceListProps {
@@ -8,14 +8,33 @@ interface DeviceListProps {
   onBorrow: (deviceId: string) => void;
   onReturn: (deviceId: string) => void;
   onDelete: (deviceId: string) => void;
+  deviceTypeMap?: Record<string, { icon: string; color: string }>;
 }
 
-export const DeviceList: React.FC<DeviceListProps> = ({ devices, onBorrow, onReturn, onDelete }) => {
+export const DeviceList: React.FC<DeviceListProps> = ({ devices, onBorrow, onReturn, onDelete, deviceTypeMap }) => {
   const [filter, setFilter] = useState<'all' | DeviceStatus>('all');
 
   const filteredDevices = devices.filter(d => filter === 'all' || d.status === filter);
 
+  // 辅助函数：根据名称获取图标组件
+  const getIconComponent = (iconName: string) => {
+    const iconMap: Record<string, React.ComponentType<any>> = {
+      Laptop, Smartphone, Camera, Headphones, Keyboard, Box,
+      Tablet, Monitor, Printer, Server, HardDrive, Mouse,
+      Speaker, Gamepad2, Watch, Tv, Radio, Package,
+    };
+    return iconMap[iconName] || Box;
+  };
+
   const getIcon = (type: string) => {
+    // 优先使用映射表
+    if (deviceTypeMap && deviceTypeMap[type]) {
+      const { icon, color } = deviceTypeMap[type];
+      const IconComponent = getIconComponent(icon);
+      return <IconComponent size={24} className={color} />;
+    }
+    
+    // 向后兼容：使用关键词匹配
     const t = type.toLowerCase();
     if (t.includes('laptop') || t.includes('mac')) return <Laptop size={24} className="text-blue-600" />;
     if (t.includes('phone') || t.includes('mobile') || t.includes('android') || t.includes('ios')) return <Smartphone size={24} className="text-purple-600" />;

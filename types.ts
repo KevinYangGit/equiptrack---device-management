@@ -25,3 +25,9 @@ export interface AppData {
   devices: Device[];
   history: HistoryRecord[];
 }
+
+export interface DeviceType {
+  name: string;        // 设备类型名称，如 "Laptop"
+  icon: string;        // lucide-react 图标名称，如 "Laptop"
+  color?: string;      // 图标颜色（可选），如 "text-blue-600"
+}
