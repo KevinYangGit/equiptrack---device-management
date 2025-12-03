@@ -1,0 +1,5 @@
+{
+  "name": "EquipTrack - Device Management",
+  "description": "A comprehensive device borrowing management system tracking status, borrowers, and transaction history with persistent storage.",
+  "requestFramePermissions": []
+}
