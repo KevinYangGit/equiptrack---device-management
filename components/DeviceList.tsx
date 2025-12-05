@@ -152,9 +152,14 @@ export const DeviceList: React.FC<DeviceListProps> = ({ devices, onBorrow, onRet
                   )}
                   <Button 
                       variant="ghost" 
-                      className="text-gray-400 hover:text-red-600 hover:bg-red-50 px-2.5 transition-all active:scale-90"
+                      className={`px-2.5 transition-all ${
+                        device.status === 'borrowed' 
+                          ? 'text-gray-300 cursor-not-allowed opacity-50' 
+                          : 'text-gray-400 hover:text-red-600 hover:bg-red-50 active:scale-90'
+                      }`}
                       onClick={() => onDelete(device.id)}
-                      title="Delete Device"
+                      disabled={device.status === 'borrowed'}
+                      title={device.status === 'borrowed' ? 'Cannot delete borrowed device' : 'Delete Device'}
                   >
                       <Trash2 size={18} />
                   </Button>

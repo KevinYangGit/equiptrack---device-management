@@ -535,6 +535,15 @@ const App = () => {
   };
 
   const openDeleteModal = (deviceId: string) => {
+    const device = data.devices.find(d => d.id === deviceId);
+    if (!device) return;
+    
+    // Check if device is borrowed
+    if (device.status === 'borrowed') {
+      setStorageError('Cannot delete a device that is currently borrowed. Please return it first.');
+      return;
+    }
+    
     setDeviceToDeleteId(deviceId);
     setIsDeleteModalOpen(true);
   };
@@ -544,6 +553,14 @@ const App = () => {
 
     const device = data.devices.find(d => d.id === deviceToDeleteId);
     if (!device) return;
+    
+    // Double check: prevent deleting borrowed devices
+    if (device.status === 'borrowed') {
+      setStorageError('Cannot delete a device that is currently borrowed. Please return it first.');
+      setIsDeleteModalOpen(false);
+      setDeviceToDeleteId(null);
+      return;
+    }
 
     const newHistory: HistoryRecord = {
         id: generateId(),
