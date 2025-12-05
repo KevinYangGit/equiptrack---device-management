@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Plus, Package2, Upload, AlertTriangle, Trash2, X, CheckCircle2, AlertCircle, Download, FileUp, Settings, Laptop, Smartphone, Camera, Headphones, Keyboard, Box, Tablet, Monitor, Printer, Server, HardDrive, Mouse, Speaker, Gamepad2, Watch, Tv, Radio, Package } from 'lucide-react';
 import { AppData, Device, HistoryRecord, DeviceType } from './types';
-import { loadData, saveData, generateId, loadWallpaper, isWallpaperFetchedToday, saveWallpaper, exportData, importData, loadDeviceNames, saveDeviceName, deleteDeviceName, getDeviceNamesSorted, loadDeviceTypes, addDeviceType, deleteDeviceType, saveDeviceTypes, updateDeviceTypeIcon } from './services/storageService';
+import { loadData, saveData, generateId, loadWallpaper, saveWallpaper, exportData, importData, loadDeviceNames, saveDeviceName, deleteDeviceName, getDeviceNamesSorted, loadDeviceTypes, addDeviceType, deleteDeviceType, saveDeviceTypes, updateDeviceTypeIcon } from './services/storageService';
 import { IconSelector } from './components/IconSelector';
 import { DeviceList } from './components/DeviceList';
 import { HistoryLog } from './components/HistoryLog';
@@ -62,32 +62,17 @@ const App = () => {
   // Wallpaper Management Logic
   useEffect(() => {
     const initializeWallpaper = async () => {
-      // First, load saved wallpaper from local storage
+      // First, load saved wallpaper from local storage and display it immediately
       const savedWallpaper = loadWallpaper();
       if (savedWallpaper) {
         setBgUrl(savedWallpaper);
-        setIsBgLoading(false);
+      } else {
+        // If no saved wallpaper, use fallback
+        setBgUrl('https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=2000');
       }
+      setIsBgLoading(false);
 
-      // Check if we need to fetch a new wallpaper today
-      const fetchedToday = isWallpaperFetchedToday();
-      
-      if (fetchedToday) {
-        // Already fetched today, use saved wallpaper
-        if (!savedWallpaper) {
-          // Fallback if saved wallpaper is missing
-          setBgUrl('https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=2000');
-        }
-        setIsBgLoading(false);
-        return;
-      }
-
-      // If no saved wallpaper and need to fetch, keep loading state
-      if (!savedWallpaper) {
-        setIsBgLoading(true);
-      }
-
-      // Need to fetch new wallpaper
+      // Always fetch new wallpaper in background, regardless of date
       const fetchBingWallpaper = async () => {
         // Create abort controller for timeout
         const controller = new AbortController();
@@ -110,6 +95,7 @@ const App = () => {
           if (data && data.url) {
             // Save the new wallpaper URL and update date
             saveWallpaper(data.url);
+            // Update background image with new wallpaper
             setBgUrl(data.url);
           } else {
             throw new Error('Invalid response format');
@@ -117,13 +103,8 @@ const App = () => {
         } catch (error) {
           clearTimeout(timeoutId);
           console.error('Failed to fetch Bing wallpaper:', error);
-          // If fetch fails and we have a saved wallpaper, keep using it
-          // Otherwise, use fallback
-          if (!savedWallpaper) {
-            setBgUrl('https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=2000');
-          }
-        } finally {
-          setIsBgLoading(false);
+          // If fetch fails, keep using the current wallpaper (saved or fallback)
+          // No need to change bgUrl as it's already set above
         }
       };
 
@@ -222,10 +203,10 @@ const App = () => {
     setIsExportConfirmOpen(false);
     try {
       exportData();
-      setSuccessMessage('数据已成功导出！');
+      setSuccessMessage('Data exported successfully!');
       setStorageError(null);
     } catch (error) {
-      setStorageError(error instanceof Error ? error.message : '导出数据失败，请重试');
+      setStorageError(error instanceof Error ? error.message : 'Failed to export data, please try again');
       setSuccessMessage(null);
     }
   };
@@ -277,17 +258,17 @@ const App = () => {
             setIsImporting(false);
           } catch (error) {
             setIsImporting(false);
-            setStorageError(error instanceof Error ? error.message : '无法读取文件，请确保是有效的JSON文件');
+            setStorageError(error instanceof Error ? error.message : 'Unable to read file, please ensure it is a valid JSON file');
           }
         };
         reader.onerror = () => {
           setIsImporting(false);
-          setStorageError('读取文件失败，请重试');
+          setStorageError('Failed to read file, please try again');
         };
         reader.readAsText(file);
       } catch (error) {
         setIsImporting(false);
-        setStorageError(error instanceof Error ? error.message : '导入失败，请重试');
+        setStorageError(error instanceof Error ? error.message : 'Import failed, please try again');
       }
     };
     input.click();
@@ -295,7 +276,7 @@ const App = () => {
 
   const handleImportConfirm = async () => {
     if (!importFileRef.current) {
-      setStorageError('未选择文件');
+      setStorageError('No file selected');
       return;
     }
 
@@ -305,14 +286,14 @@ const App = () => {
       
       const importedData = await importData(importFileRef.current);
       setData(importedData);
-      setSuccessMessage('数据已成功导入！');
+      setSuccessMessage('Data imported successfully!');
       setIsImportModalOpen(false);
       setImportPreview(null);
       importFileRef.current = null;
       setIsImporting(false);
     } catch (error) {
       setIsImporting(false);
-      setStorageError(error instanceof Error ? error.message : '导入数据失败，请重试');
+      setStorageError(error instanceof Error ? error.message : 'Failed to import data, please try again');
     }
   };
 
@@ -402,7 +383,7 @@ const App = () => {
 
   const handleAddDeviceType = () => {
     if (!newDeviceTypeInput.trim()) {
-      setStorageError('设备类型不能为空');
+      setStorageError('Device type cannot be empty');
       return;
     }
 
@@ -413,9 +394,9 @@ const App = () => {
       setNewDeviceTypeInput('');
       setNewDeviceTypeIcon('Box');
       setNewDeviceTypeColor('text-gray-600');
-      setSuccessMessage('设备类型已添加');
+      setSuccessMessage('Device type added');
     } catch (error) {
-      setStorageError(error instanceof Error ? error.message : '添加设备类型失败');
+      setStorageError(error instanceof Error ? error.message : 'Failed to add device type');
     }
   };
 
@@ -430,9 +411,9 @@ const App = () => {
         setNewDeviceType(updatedTypes[0].name);
       }
       
-      setSuccessMessage('设备类型已删除');
+      setSuccessMessage('Device type deleted');
     } catch (error) {
-      setStorageError(error instanceof Error ? error.message : '删除设备类型失败');
+      setStorageError(error instanceof Error ? error.message : 'Failed to delete device type');
     }
   };
 
@@ -450,9 +431,9 @@ const App = () => {
       const updatedTypes = loadDeviceTypes();
       setDeviceTypes(updatedTypes);
       setEditingType(null);
-      setSuccessMessage('图标已更新');
+      setSuccessMessage('Icon updated');
     } catch (error) {
-      setStorageError(error instanceof Error ? error.message : '更新图标失败');
+      setStorageError(error instanceof Error ? error.message : 'Failed to update icon');
     }
   };
 
@@ -607,7 +588,7 @@ const App = () => {
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 animate-fade-in-up">
             <AlertTriangle className="text-red-600 shrink-0 mt-0.5" size={20} />
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-red-900 mb-1">错误</h3>
+              <h3 className="font-semibold text-red-900 mb-1">Error</h3>
               <p className="text-sm text-red-700">{storageError}</p>
             </div>
             <button
@@ -624,7 +605,7 @@ const App = () => {
           <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3 animate-fade-in-up">
             <CheckCircle2 className="text-green-600 shrink-0 mt-0.5" size={20} />
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-green-900 mb-1">成功</h3>
+              <h3 className="font-semibold text-green-900 mb-1">Success</h3>
               <p className="text-sm text-green-700">{successMessage}</p>
             </div>
             <button
@@ -654,7 +635,7 @@ const App = () => {
                 onClick={() => setIsSettingsMenuOpen(!isSettingsMenuOpen)} 
                 variant="secondary" 
                 className="shadow-sm hover:shadow-md transition-all p-2"
-                title="设置"
+                title="Settings"
               >
                 <Settings size={18} />
               </Button>
@@ -667,7 +648,7 @@ const App = () => {
                     className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors"
                   >
                     <Download size={16} />
-                    <span>导出数据</span>
+                    <span>Export Data</span>
                   </button>
                   <button
                     onClick={handleImportClickFromMenu}
@@ -675,7 +656,7 @@ const App = () => {
                     disabled={isImporting}
                   >
                     <FileUp size={16} />
-                    <span>导入数据</span>
+                    <span>Import Data</span>
                   </button>
                 </div>
               )}
@@ -693,7 +674,7 @@ const App = () => {
           <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-gray-200/60 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 font-medium mb-1">全部设备数量</p>
+                <p className="text-sm text-gray-600 font-medium mb-1">All Devices</p>
                 <p className="text-2xl font-bold text-gray-900">{deviceStats.total}</p>
               </div>
               <div className="bg-blue-100 p-3 rounded-lg">
@@ -705,7 +686,7 @@ const App = () => {
           <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-gray-200/60 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 font-medium mb-1">可借用设备数量</p>
+                <p className="text-sm text-gray-600 font-medium mb-1">Available</p>
                 <p className="text-2xl font-bold text-green-600">{deviceStats.available}</p>
               </div>
               <div className="bg-green-100 p-3 rounded-lg">
@@ -717,7 +698,7 @@ const App = () => {
           <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-gray-200/60 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 font-medium mb-1">已借出设备数量</p>
+                <p className="text-sm text-gray-600 font-medium mb-1">Borrowed</p>
                 <p className="text-2xl font-bold text-amber-600">{deviceStats.borrowed}</p>
               </div>
               <div className="bg-amber-100 p-3 rounded-lg">
@@ -821,7 +802,7 @@ const App = () => {
                             }
                           }}
                           className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 transition-opacity"
-                          title="删除"
+                          title="Delete"
                         >
                           <X size={14} />
                         </button>
@@ -840,7 +821,7 @@ const App = () => {
                 onClick={() => setIsDeviceTypeModalOpen(true)}
                 className="text-xs text-brand-600 hover:text-brand-700 font-medium"
               >
-                管理类型
+                Manage Types
               </button>
             </div>
             <select
@@ -957,32 +938,32 @@ const App = () => {
           setImportPreview(null);
           importFileRef.current = null;
         }}
-        title="确认导入数据"
+        title="Confirm Import Data"
       >
         <div className="space-y-4">
           <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg text-amber-800 text-sm">
             <AlertTriangle className="shrink-0" size={20} />
-            <p>导入数据将覆盖当前所有设备数据。此操作无法撤销，请确认是否继续。</p>
+            <p>Importing data will overwrite all current device data. This action cannot be undone. Please confirm to continue.</p>
           </div>
           
           {importPreview && (
             <div className="space-y-2">
               <p className="text-sm text-gray-600">
-                导入数据预览：
+                Import Data Preview:
               </p>
               <div className="bg-gray-50 rounded-lg p-3 space-y-1">
                 <p className="text-sm text-gray-700">
-                  <span className="font-semibold">设备数量：</span>
+                  <span className="font-semibold">Device Count: </span>
                   {importPreview.deviceCount}
                 </p>
                 <p className="text-sm text-gray-700">
-                  <span className="font-semibold">历史记录数量：</span>
+                  <span className="font-semibold">History Records Count: </span>
                   {importPreview.historyCount}
                 </p>
                 {importPreview.exportDate && (
                   <p className="text-sm text-gray-700">
-                    <span className="font-semibold">导出日期：</span>
-                    {new Date(importPreview.exportDate).toLocaleString('zh-CN')}
+                    <span className="font-semibold">Export Date: </span>
+                    {new Date(importPreview.exportDate).toLocaleString('en-US')}
                   </p>
                 )}
               </div>
@@ -999,13 +980,13 @@ const App = () => {
               }}
               disabled={isImporting}
             >
-              取消
+              Cancel
             </Button>
             <Button 
               onClick={handleImportConfirm} 
               disabled={isImporting}
             >
-              {isImporting ? '导入中...' : '确认导入'}
+              {isImporting ? 'Importing...' : 'Confirm Import'}
             </Button>
           </div>
         </div>
@@ -1015,21 +996,21 @@ const App = () => {
       <Modal
         isOpen={isExportConfirmOpen}
         onClose={() => setIsExportConfirmOpen(false)}
-        title="确认导出数据"
+        title="Confirm Export Data"
       >
         <div className="space-y-4">
           <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg text-blue-800 text-sm">
             <AlertTriangle className="shrink-0" size={20} />
-            <p>即将导出所有设备数据。导出文件将包含所有设备和历史记录。</p>
+            <p>About to export all device data. The export file will include all devices and history records.</p>
           </div>
           
           <div className="bg-gray-50 rounded-lg p-3 space-y-1">
             <p className="text-sm text-gray-700">
-              <span className="font-semibold">当前设备数量：</span>
+              <span className="font-semibold">Current Device Count: </span>
               {deviceStats.total}
             </p>
             <p className="text-sm text-gray-700">
-              <span className="font-semibold">历史记录数量：</span>
+              <span className="font-semibold">History Records Count: </span>
               {data.history.length}
             </p>
           </div>
@@ -1039,10 +1020,10 @@ const App = () => {
               variant="secondary" 
               onClick={() => setIsExportConfirmOpen(false)}
             >
-              取消
+              Cancel
             </Button>
             <Button onClick={handleExport}>
-              确认导出
+              Confirm Export
             </Button>
           </div>
         </div>
@@ -1059,12 +1040,12 @@ const App = () => {
           setEditingType(null);
           setStorageError(null);
         }}
-        title="管理设备类型"
+        title="Manage Device Types"
       >
         <div className="space-y-4">
           {/* Add New Type Section */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">添加新类型</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Add New Type</label>
             <div className="space-y-3">
               <input
                 type="text"
@@ -1076,7 +1057,7 @@ const App = () => {
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
-                placeholder="输入新设备类型"
+                placeholder="Enter new device type"
               />
               
               {/* Icon Selector */}
@@ -1090,14 +1071,14 @@ const App = () => {
               />
               
               <Button onClick={handleAddDeviceType} disabled={!newDeviceTypeInput.trim()}>
-                添加
+                Add
               </Button>
             </div>
           </div>
 
           {/* Device Types List */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">现有类型</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Existing Types</label>
             <div className="border border-gray-200 rounded-lg divide-y divide-gray-200 max-h-60 overflow-auto">
               {deviceTypes.map((type) => {
                 const isInUse = data.devices.some(device => device.type === type.name);
@@ -1121,7 +1102,7 @@ const App = () => {
                     className="px-3 py-3 hover:bg-gray-50 group"
                   >
                     {isEditing ? (
-                      // 编辑模式
+                      // Edit mode
                       <div className="space-y-3">
                         <div className="flex items-center gap-3">
                           <IconComponent size={20} className={type.color} />
@@ -1140,7 +1121,7 @@ const App = () => {
                             onClick={handleSaveTypeIcon}
                             className="text-sm py-1.5"
                           >
-                            保存
+                            Save
                           </Button>
                           <Button 
                             variant="secondary" 
@@ -1151,12 +1132,12 @@ const App = () => {
                             }}
                             className="text-sm py-1.5"
                           >
-                            取消
+                            Cancel
                           </Button>
                         </div>
                       </div>
                     ) : (
-                      // 显示模式
+                      // Display mode
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3 flex-1">
                           <IconComponent size={20} className={type.color || 'text-gray-600'} />
@@ -1164,12 +1145,12 @@ const App = () => {
                         </div>
                         <div className="flex items-center gap-2">
                           {isInUse && (
-                            <span className="text-xs text-gray-500">使用中</span>
+                            <span className="text-xs text-gray-500">In Use</span>
                           )}
                           <button
                             onClick={() => handleEditTypeIcon(type)}
                             className="opacity-0 group-hover:opacity-100 text-blue-500 hover:text-blue-700 p-1 transition-opacity"
-                            title="编辑图标"
+                            title="Edit Icon"
                           >
                             <Settings size={14} />
                           </button>
@@ -1177,7 +1158,7 @@ const App = () => {
                             onClick={() => handleDeleteDeviceType(type.name)}
                             disabled={isInUse}
                             className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
-                            title={isInUse ? '该类型正在使用中，无法删除' : '删除类型'}
+                            title={isInUse ? 'This type is in use and cannot be deleted' : 'Delete Type'}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -1189,7 +1170,7 @@ const App = () => {
               })}
             </div>
             {deviceTypes.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">暂无设备类型</p>
+              <p className="text-sm text-gray-500 text-center py-4">No device types</p>
             )}
           </div>
 
@@ -1202,7 +1183,7 @@ const App = () => {
               setEditingType(null);
               setStorageError(null);
             }}>
-              关闭
+              Close
             </Button>
           </div>
         </div>
